@@ -54,6 +54,33 @@ Apri `http://localhost:8080` nel browser.
 3. Aggiungi la variabile `MISTRAL_API_KEY` nelle impostazioni del progetto
 4. Railway assegna la porta tramite la variabile `PORT` (già gestita)
 
+## Flusso
+
+```
+Browser
+  │
+  │  POST /upload (multipart PDF)
+  ▼
+Server Go
+  │
+  ├─ Estrazione testo nativo (ledongthuc/pdf)
+  │     │
+  │     └─ testo < 50 caratteri?
+  │           │
+  │           └─ Sì → OCR
+  │                   ├─ pdftoppm  →  immagini PNG per pagina
+  │                   └─ tesseract →  testo grezzo
+  │
+  ├─ Testo estratto
+  │
+  ├─ Chiamata API Mistral (mistral-small-latest, JSON mode)
+  │
+  └─ Risposta JSON strutturata
+        │
+        ├─ Salvata in output/<timestamp>.json
+        └─ Restituita al browser → tabella + download
+```
+
 ## Struttura
 
 ```
