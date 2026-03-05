@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estrattore fatture</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.1/dist/fonts/geist-sans/style.min.css">
+
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --ink: #18181b;
+      --ink-light: #3f3f46;
+      --ink-faint: #a1a1aa;
+      --line: #e4e4e7;
+      --line-light: #f4f4f5;
+      --bg: #fafafa;
+      --white: #ffffff;
+      --error: #991b1b;
+      --font-title: 'Instrument Serif', Georgia, serif;
+      --font-sans: 'Geist', -apple-system, system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', 'SF Mono', monospace;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-weight: 400;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      font-size: 15px;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 80px 24px 120px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 72px;
+    }
+
+    header h1 {
+      font-family: var(--font-title);
+      font-weight: 400;
+      font-size: 2.8rem;
+      font-style: italic;
+      color: var(--ink);
+      margin-bottom: 10px;
+      letter-spacing: -0.01em;
+    }
+
+    header p {
+      font-size: 0.8rem;
+      color: var(--ink-faint);
+      font-weight: 400;
+      letter-spacing: 0.03em;
+    }
+
+    .upload-area {
+      border: 1.5px dashed var(--line);
+      border-radius: 4px;
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.3s ease, background 0.3s ease;
+      position: relative;
+    }
+
+    .upload-area:hover,
+    .upload-area.dragover {
+      border-color: var(--ink-faint);
+      background: var(--white);
+    }
+
+    .upload-area input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .upload-label {
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      font-weight: 400;
+    }
+
+    .upload-hint {
+      font-size: 0.72rem;
+      color: var(--ink-faint);
+      margin-top: 8px;
+    }
+
+    .file-name {
+      font-size: 0.82rem;
+      color: var(--ink);
+      margin-top: 16px;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .file-name.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .submit-btn {
+      display: block;
+      width: 100%;
+      margin-top: 24px;
+      padding: 13px;
+      background: var(--ink);
+      color: var(--white);
+      border: none;
+      border-radius: 3px;
+      font-family: var(--font-sans);
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.3s ease;
+    }
+
+    .submit-btn:hover { opacity: 0.85; }
+    .submit-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .loader {
+      display: none;
+      margin: 40px auto 0;
+      width: 100px;
+      height: 1.5px;
+      background: var(--line);
+      border-radius: 1px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .loader.active { display: block; }
+
+    .loader::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -40%;
+      width: 40%;
+      height: 100%;
+      background: var(--ink);
+      border-radius: 1px;
+      animation: slide 1.4s ease-in-out infinite;
+    }
+
+    @keyframes slide {
+      0%   { left: -40%; }
+      50%  { left: 100%; }
+      100% { left: -40%; }
+    }
+
+    .loader-text {
+      display: none;
+      text-align: center;
+      margin-top: 14px;
+      font-size: 0.72rem;
+      color: var(--ink-faint);
+      letter-spacing: 0.04em;
+    }
+
+    .loader-text.active { display: block; }
+
+    .error-message {
+      margin-top: 24px;
+      font-size: 0.8rem;
+      color: var(--error);
+      text-align: center;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .error-message.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .result {
+      margin-top: 64px;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .result.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 36px 0;
+    }
+
+    .section-title {
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      font-weight: 500;
+      margin-bottom: 18px;
+    }
+
+    .doc-header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .doc-header h2 {
+      font-family: var(--font-title);
+      font-weight: 400;
+      font-size: 1.7rem;
+      letter-spacing: -0.01em;
+      margin-bottom: 4px;
+    }
+
+    .doc-header .doc-date {
+      font-size: 0.78rem;
+      color: var(--ink-faint);
+    }
+
+    .soggetti {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 36px;
+    }
+
+    @media (max-width: 560px) {
+      .soggetti { grid-template-columns: 1fr; gap: 28px; }
+    }
+
+    .soggetto-nome {
+      font-weight: 500;
+      font-size: 0.9rem;
+      margin-bottom: 4px;
+    }
+
+    .soggetto-detail {
+      font-size: 0.78rem;
+      color: var(--ink-light);
+      line-height: 1.7;
+    }
+
+    .voci-list { list-style: none; }
+
+    .voce-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line-light);
+    }
+
+    .voce-item:last-child { border-bottom: none; }
+
+    .voce-desc {
+      flex: 1;
+      font-size: 0.82rem;
+      color: var(--ink);
+    }
+
+    .voce-qty {
+      font-size: 0.72rem;
+      color: var(--ink-faint);
+      margin: 0 16px;
+      white-space: nowrap;
+    }
+
+    .voce-amount {
+      font-size: 0.82rem;
+      font-weight: 500;
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .importi { margin-top: 20px; }
+
+    .importo-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 7px 0;
+      font-size: 0.82rem;
+    }
+
+    .importo-row .label { color: var(--ink-faint); }
+
+    .importo-row .value {
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .importo-row.totale {
+      border-top: 1px solid var(--ink);
+      margin-top: 8px;
+      padding-top: 12px;
+    }
+
+    .importo-row.totale .label {
+      font-weight: 500;
+      color: var(--ink);
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .importo-row.totale .value {
+      font-family: var(--font-title);
+      font-size: 1.35rem;
+      font-weight: 400;
+    }
+
+    .result-actions {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 36px;
+    }
+
+    .result-actions button {
+      background: none;
+      border: none;
+      font-family: var(--font-sans);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      cursor: pointer;
+      padding: 8px 12px;
+      transition: color 0.3s ease;
+    }
+
+    .result-actions button:hover { color: var(--ink); }
+
+    .json-raw {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.5s ease, opacity 0.4s ease;
+      opacity: 0;
+    }
+
+    .json-raw.expanded {
+      max-height: 2000px;
+      opacity: 1;
+      margin-top: 20px;
+    }
+
+    .json-raw pre {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 300;
+      line-height: 1.8;
+      color: var(--ink-light);
+      background: var(--white);
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .file-info {
+      margin-top: 28px;
+      text-align: center;
+      font-size: 0.68rem;
+      color: var(--ink-faint);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Estrattore Fatture</h1>
+    </header>
+
+    <div class="upload-area" id="uploadArea">
+      <div class="upload-label">Trascina un PDF qui o clicca per selezionare</div>
+      <div class="upload-hint">PDF nativi e scansionati — Max 20 MB</div>
+      <div class="file-name" id="fileName"></div>
+      <input type="file" id="fileInput" accept=".pdf,application/pdf">
+    </div>
+
+    <button class="submit-btn" id="submitBtn" disabled>Analizza fattura</button>
+
+    <div class="loader" id="loader"></div>
+    <div class="loader-text" id="loaderText">Estrazione e analisi in corso…</div>
+
+    <div class="error-message" id="errorMessage"></div>
+
+    <div class="result" id="result">
+      <div class="doc-header">
+        <h2 id="docNumero"></h2>
+        <div class="doc-date" id="docData"></div>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="soggetti">
+        <div>
+          <div class="section-title">Fornitore</div>
+          <div class="soggetto-nome" id="fornNome"></div>
+          <div class="soggetto-detail" id="fornDetail"></div>
+        </div>
+        <div>
+          <div class="section-title">Cliente</div>
+          <div class="soggetto-nome" id="cliNome"></div>
+          <div class="soggetto-detail" id="cliDetail"></div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="section-title">Voci</div>
+      <ul class="voci-list" id="vociList"></ul>
+
+      <div class="importi">
+        <div class="importo-row">
+          <span class="label">Imponibile</span>
+          <span class="value" id="importoNetto"></span>
+        </div>
+        <div class="importo-row">
+          <span class="label">IVA</span>
+          <span class="value" id="importoIVA"></span>
+        </div>
+        <div class="importo-row totale">
+          <span class="label">Totale</span>
+          <span class="value" id="importoTotale"></span>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="result-actions">
+        <button id="jsonToggleBtn">Mostra JSON</button>
+        <button id="downloadBtn">Scarica JSON</button>
+      </div>
+      <div class="json-raw" id="jsonRaw">
+        <pre id="jsonPre"></pre>
+      </div>
+
+      <div class="file-info" id="fileInfo"></div>
+    </div>
+  </div>
+
+  <script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const submitBtn = document.getElementById('submitBtn');
+    const loader = document.getElementById('loader');
+    const loaderText = document.getElementById('loaderText');
+    const errorMessage = document.getElementById('errorMessage');
+    const result = document.getElementById('result');
+
+    let selectedFile = null;
+    let ultimoDatiJSON = null;
+
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0 && files[0].type === 'application/pdf') {
+        selectedFile = files[0];
+        mostraFile(selectedFile.name);
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) {
+        selectedFile = fileInput.files[0];
+        mostraFile(selectedFile.name);
+      }
+    });
+
+    function mostraFile(nome) {
+      fileName.textContent = nome;
+      fileName.classList.add('visible');
+      submitBtn.disabled = false;
+    }
+
+    submitBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      nascondiErrore();
+      result.classList.remove('visible');
+
+      loader.classList.add('active');
+      loaderText.classList.add('active');
+      submitBtn.disabled = true;
+
+      const formData = new FormData();
+      formData.append('pdf', selectedFile);
+
+      try {
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Errore sconosciuto dal server');
+        }
+
+        mostraRisultato(data.dati, data.file);
+      } catch (err) {
+        mostraErrore(err.message);
+      } finally {
+        loader.classList.remove('active');
+        loaderText.classList.remove('active');
+        submitBtn.disabled = false;
+      }
+    });
+
+    function mostraErrore(msg) {
+      errorMessage.textContent = msg;
+      errorMessage.classList.add('visible');
+    }
+
+    function nascondiErrore() {
+      errorMessage.textContent = '';
+      errorMessage.classList.remove('visible');
+    }
+
+    function valuta(n) {
+      if (n == null || isNaN(n)) return '€ 0,00';
+      return '€ ' + Number(n).toLocaleString('it-IT', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function mostraRisultato(dati, filePath) {
+      ultimoDatiJSON = dati;
+
+      document.getElementById('docNumero').textContent =
+        dati.numero_fattura ? `Fattura ${dati.numero_fattura}` : 'Fattura';
+      document.getElementById('docData').textContent = dati.data_emissione || '';
+
+      const forn = dati.fornitore || {};
+      document.getElementById('fornNome').textContent = forn.nome || '—';
+      document.getElementById('fornDetail').innerHTML = righeDettaglio(forn);
+
+      const cli = dati.cliente || {};
+      document.getElementById('cliNome').textContent = cli.nome || '—';
+      document.getElementById('cliDetail').innerHTML = righeDettaglio(cli);
+
+      const vociList = document.getElementById('vociList');
+      vociList.innerHTML = '';
+      const voci = dati.voci || [];
+      if (voci.length === 0) {
+        vociList.innerHTML = '<li style="font-size:0.8rem;color:var(--ink-faint);">Nessuna voce estratta</li>';
+      } else {
+        voci.forEach(v => {
+          const li = document.createElement('li');
+          li.className = 'voce-item';
+          li.innerHTML = `
+            <span class="voce-desc">${esc(v.descrizione || '—')}</span>
+            <span class="voce-qty">${v.quantita || 0} × ${valuta(v.prezzo_unitario)}</span>
+            <span class="voce-amount">${valuta(v.totale)}</span>
+          `;
+          vociList.appendChild(li);
+        });
+      }
+
+      document.getElementById('importoNetto').textContent = valuta(dati.importo_netto);
+      document.getElementById('importoIVA').textContent = valuta(dati.iva);
+      document.getElementById('importoTotale').textContent = valuta(dati.importo_totale);
+
+      document.getElementById('jsonPre').textContent = JSON.stringify(dati, null, 2);
+      document.getElementById('fileInfo').textContent = '';
+
+      const jsonRaw = document.getElementById('jsonRaw');
+      const jsonToggleBtn = document.getElementById('jsonToggleBtn');
+      jsonRaw.classList.remove('expanded');
+      jsonToggleBtn.textContent = 'Mostra JSON';
+
+      result.classList.add('visible');
+    }
+
+    function righeDettaglio(sogg) {
+      const parti = [];
+      if (sogg.partita_iva) parti.push(`P.IVA ${esc(sogg.partita_iva)}`);
+      if (sogg.indirizzo) parti.push(esc(sogg.indirizzo));
+      return parti.join('<br>');
+    }
+
+    function esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    document.getElementById('jsonToggleBtn').addEventListener('click', () => {
+      const jsonRaw = document.getElementById('jsonRaw');
+      const btn = document.getElementById('jsonToggleBtn');
+      const expanded = jsonRaw.classList.toggle('expanded');
+      btn.textContent = expanded ? 'Nascondi JSON' : 'Mostra JSON';
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      if (!ultimoDatiJSON) return;
+      const blob = new Blob([JSON.stringify(ultimoDatiJSON, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const num = ultimoDatiJSON.numero_fattura || 'fattura';
+      a.download = `${num}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>
