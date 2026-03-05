@@ -1,4 +1,4 @@
-# Estrattore Fatture
+# Estrattore fatture
 
 Applicazione web in Go che estrae dati strutturati da fatture PDF usando le API di Mistral AI.
 
