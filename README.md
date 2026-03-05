@@ -1,5 +1,7 @@
 # Estrattore fatture
 
+**Demo live: [invoiceextractorgo-production.up.railway.app](https://invoiceextractorgo-production.up.railway.app/)**
+
 Applicazione web in Go che estrae dati strutturati da fatture PDF usando le API di Mistral AI.
 
 Supporta sia PDF con testo selezionabile che PDF scansionati/foto (via OCR con Tesseract).
