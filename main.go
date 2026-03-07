@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +27,7 @@ const (
 	outputDir          = "output"
 	maxUploadSize      = 20 << 20 // 20 MB
 	maxMemoryMultipart = 1 << 20
-	sogliaOCR          = 50
+	sogliaParoleOCR    = 10
 )
 
 func getPort() string {
@@ -91,23 +93,46 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+var reParola = regexp.MustCompile(`\b\p{L}{2,}\b`)
+var reNumero = regexp.MustCompile(`(\d+)\.png$`)
+
+// conta solo parole "vere" (almeno 2 lettere), così numeri isolati,
+// punteggiatura e metadata tipo "x" non gonfiano il conteggio
+func contaParole(testo string) int {
+	return len(reParola.FindAllString(testo, -1))
+}
+
+// estrae il numero di pagina dal nome file (es. "page-01.png" → 1)
+// se non trova un numero restituisce 0, così finisce in cima e si nota
+func estraiNumero(nome string) int {
+	m := reNumero.FindStringSubmatch(nome)
+	if len(m) < 2 {
+		return 0
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
+}
+
 // estrazione testo dal PDF
 
 // questa funzione decide come estrarre il testo:
 // prima prova il modo veloce (testo già dentro il PDF),
 // se viene fuori poco o niente vuol dire che è una scansione/foto
 // e allora passa a OCR che è più lento ma legge le immagini.
+// la soglia è in parole (non caratteri): un PDF con un logo e metadata
+// casuali può avere 50+ caratteri ma zero parole sensate
 func estraiTestoPDF(percorso string) (string, error) {
 	testo, err := estraiTestoNativo(percorso)
 	if err != nil {
 		log.Printf("[INFO] Estrazione nativa fallita (%v), provo OCR...", err)
 	}
 
-	if len(strings.TrimSpace(testo)) >= sogliaOCR {
+	parole := contaParole(testo)
+	if parole >= sogliaParoleOCR {
 		return testo, nil
 	}
 
-	log.Printf("[INFO] Testo nativo insufficiente (%d caratteri), avvio OCR...", len(strings.TrimSpace(testo)))
+	log.Printf("[INFO] Testo nativo insufficiente (%d parole), avvio OCR...", parole)
 	testoOCR, err := estraiTestoOCR(percorso)
 	if err != nil {
 		return "", fmt.Errorf("sia l'estrazione nativa che OCR sono fallite: %w", err)
@@ -182,7 +207,9 @@ func estraiTestoOCR(percorso string) (string, error) {
 	if err != nil || len(immagini) == 0 {
 		return "", fmt.Errorf("nessuna immagine generata da pdftoppm")
 	}
-	sort.Strings(immagini)
+	sort.Slice(immagini, func(i, j int) bool {
+		return estraiNumero(immagini[i]) < estraiNumero(immagini[j])
+	})
 
 	var buf bytes.Buffer
 	for _, img := range immagini {
@@ -321,6 +348,48 @@ func chiamaMistral(ctx context.Context, testoPDF string) (json.RawMessage, error
 	return jsonValidato, nil
 }
 
+// controlla che Mistral non abbia restituito un JSON "vuoto":
+// se importo_totale è 0 E il fornitore non ha nome, probabilmente
+// non ha capito niente della fattura e i dati non sono affidabili
+func validaDatiFattura(datiJSON json.RawMessage) []string {
+	var dati struct {
+		NumeroFattura string  `json:"numero_fattura"`
+		ImportoTotale float64 `json:"importo_totale"`
+		ImportoNetto  float64 `json:"importo_netto"`
+		Fornitore     struct {
+			Nome string `json:"nome"`
+		} `json:"fornitore"`
+		Cliente struct {
+			Nome string `json:"nome"`
+		} `json:"cliente"`
+		Voci []interface{} `json:"voci"`
+	}
+
+	if err := json.Unmarshal(datiJSON, &dati); err != nil {
+		return []string{"impossibile validare la struttura del JSON"}
+	}
+
+	var avvisi []string
+
+	if dati.ImportoTotale == 0 && dati.ImportoNetto == 0 {
+		avvisi = append(avvisi, "importo totale e netto sono entrambi 0")
+	}
+	if strings.TrimSpace(dati.Fornitore.Nome) == "" {
+		avvisi = append(avvisi, "nome fornitore mancante")
+	}
+	if strings.TrimSpace(dati.Cliente.Nome) == "" {
+		avvisi = append(avvisi, "nome cliente mancante")
+	}
+	if strings.TrimSpace(dati.NumeroFattura) == "" {
+		avvisi = append(avvisi, "numero fattura mancante")
+	}
+	if len(dati.Voci) == 0 {
+		avvisi = append(avvisi, "nessuna voce estratta")
+	}
+
+	return avvisi
+}
+
 // salvataggio e utilità
 
 func salvaOutput(datiJSON json.RawMessage) (string, error) {
@@ -437,6 +506,11 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	avvisi := validaDatiFattura(datiJSON)
+	if len(avvisi) > 0 {
+		log.Printf("[WARN] Dati fattura incompleti per %s: %v", header.Filename, avvisi)
+	}
+
 	percorsoFile, err := salvaOutput(datiJSON)
 	if err != nil {
 		log.Printf("[ERRORE] Salvataggio output fallito: %v", err)
@@ -449,6 +523,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	risposta := map[string]interface{}{
 		"dati": datiJSON,
 		"file": percorsoFile,
+	}
+	if len(avvisi) > 0 {
+		risposta["avvisi"] = avvisi
 	}
 	if err := json.NewEncoder(w).Encode(risposta); err != nil {
 		log.Printf("[ERRORE] Impossibile scrivere risposta al client: %v", err)

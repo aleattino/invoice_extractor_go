@@ -390,6 +390,26 @@
       font-size: 0.68rem;
       color: var(--ink-faint);
     }
+
+    .avvisi-banner {
+      margin-top: 24px;
+      padding: 14px 18px;
+      background: #fef9ee;
+      border: 1px solid #e5d5a0;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      color: #78600a;
+      line-height: 1.7;
+    }
+
+    .avvisi-banner strong {
+      display: block;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      color: #92750e;
+    }
   </style>
 </head>
 <body>
@@ -463,6 +483,7 @@
         <pre id="jsonPre"></pre>
       </div>
 
+      <div class="avvisi-banner" id="avvisiBanner" style="display:none;"></div>
       <div class="file-info" id="fileInfo"></div>
     </div>
   </div>
@@ -537,7 +558,7 @@
           throw new Error(data.error || 'Errore sconosciuto dal server');
         }
 
-        mostraRisultato(data.dati, data.file);
+        mostraRisultato(data.dati, data.file, data.avvisi);
       } catch (err) {
         mostraErrore(err.message);
       } finally {
@@ -565,8 +586,16 @@
       });
     }
 
-    function mostraRisultato(dati, filePath) {
+    function mostraRisultato(dati, filePath, avvisi) {
       ultimoDatiJSON = dati;
+
+      const banner = document.getElementById('avvisiBanner');
+      if (avvisi && avvisi.length > 0) {
+        banner.innerHTML = '<strong>Attenzione</strong>' + avvisi.map(a => esc(a)).join('<br>');
+        banner.style.display = 'block';
+      } else {
+        banner.style.display = 'none';
+      }
 
       document.getElementById('docNumero').textContent =
         dati.numero_fattura ? `Fattura ${dati.numero_fattura}` : 'Fattura';
